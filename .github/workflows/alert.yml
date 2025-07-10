@@ -1,80 +1,29 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+name: Telegram Entry Alert
 
-import os
-import time
-import ccxt
-import schedule
-import telebot
+on:
+  schedule:
+    - cron: '*/1 * * * *'      # 매 1분마다
+  workflow_dispatch:          # “Run workflow” 수동 실행 버튼 활성화
 
-# ─── ❶ 환경변수에서 텔레그램 정보 가져오기 ───────────────────────────────
-TG_TOKEN   = os.getenv("TG_TOKEN")
-TG_CHAT_ID = os.getenv("TG_CHAT_ID")
-if not TG_TOKEN or not TG_CHAT_ID:
-    raise RuntimeError("환경변수 TG_TOKEN, TG_CHAT_ID 를 설정하세요.")
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-bot = telebot.TeleBot(TG_TOKEN)
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-# ─── ❷ Bitget USDT 선물거래소 객체 생성 ───────────────────────────────
-exchange = ccxt.bitget({
-    'enableRateLimit': True,
-    'options': {
-        'defaultType': 'future',  # USDT 선물
-    },
-})
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ccxt schedule pyTelegramBotAPI
 
-def check_entry():
-    """
-    1. USDT 마켓 심볼 상위 40종목 조회
-    2. 각 심볼 1분봉 21개 읽어서 Turtle20 돌파 체크
-    3. 돌파 시 SL=1%↓, TP=2%↑ 을 붙여 텔레그램으로 전송
-    """
-    try:
-        # 1) 전체 티커 불러와서 USDT 선물만 필터링
-        tickers = exchange.fetch_tickers()
-        usdt_symbols = [
-            s for s,info in tickers.items()
-            if s.endswith('/USDT') and info.get('quoteVolume', 0) > 0
-        ]
-        # 2) 거래량 상위 40 종목
-        top40 = sorted(
-            usdt_symbols,
-            key=lambda s: tickers[s].get('quoteVolume', 0),
-            reverse=True
-        )[:40]
-
-        for sym in top40:
-            try:
-                # 3) 1분봉 21개
-                ohlcv  = exchange.fetch_ohlcv(sym, '1m', limit=21)
-                closes = [c[4] for c in ohlcv]
-                entry     = closes[-1]
-                prev20_hi = max(closes[:-1])
-
-                # 4) Turtle20 돌파 시 알림
-                if entry > prev20_hi:
-                    sl  = entry * 0.99
-                    tp  = entry * 1.02
-                    msg = (
-                        f"🔔 {sym} 롱 진입 신호 🔔\n"
-                        f"Entry : {entry:.6f}\n"
-                        f"SL    : {sl:.6f}\n"
-                        f"TP    : {tp:.6f}\n"
-                        f"이유  : Turtle20 1분봉 고가 돌파"
-                    )
-                    bot.send_message(TG_CHAT_ID, msg)
-                    time.sleep(0.5)  # 스팸 방지
-            except Exception as e_sym:
-                print(f"[심볼 오류] {sym} → {e_sym}")
-    except Exception as e:
-        print(f"[체크 함수 오류] {e}")
-
-# ─── ❸ 1분마다 실행 스케줄 등록 ────────────────────────────────────────
-schedule.every(1).minutes.do(check_entry)
-
-# ─── ❹ 메인 진입점 ───────────────────────────────────────────────────
-if __name__ == "__main__":
-    bot.send_message(TG_CHAT_ID, "✅ 알림봇 가동 시작!")
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+      - name: Run bot.py
+        env:
+          TG_TOKEN:   ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python bot.py
