@@ -1,29 +1,35 @@
+# .github/workflows/alert.yml
 name: Telegram Entry Alert
 
 on:
+  # 1분마다 스케줄러로 자동 실행 + 수동 실행 버튼이 생기게
   schedule:
-    - cron: '*/1 * * * *'      # 매 1분마다
-  workflow_dispatch:          # “Run workflow” 수동 실행 버튼 활성화
+    - cron: '*/1 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+
+    # 여기서 시크릿을 환경변수로 주입합니다
+    env:
+      TG_TOKEN: ${{ secrets.TG_TOKEN }}
+      TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+
     steps:
-      - name: Checkout repository
+      - name: 체크아웃 코드
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Python 세팅
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: |
           pip install --upgrade pip
           pip install ccxt schedule pyTelegramBotAPI
 
-      - name: Run bot.py
-        env:
-          TG_TOKEN:   ${{ secrets.TG_TOKEN }}
-          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      - name: 봇 실행
+        # 환경변수로 주입된 TG_TOKEN, TG_CHAT_ID를 bot.py에서 os.getenv로 읽어 씁니다
         run: python bot.py
